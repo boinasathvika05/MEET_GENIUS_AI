@@ -34,9 +34,20 @@ export default function DashboardPage() {
   const handleProcess = async (transcript: string) => {
     if (!transcript.trim()) return;
 
-    setStage("summarizing"); // We use summarizing as the first visual step
+    setStage("summarizing");
     setResults(null);
     setStartTime(Date.now());
+
+    // Cycle through stages visually
+    const pipelineStages: ProcessingStage[] = ["summarizing", "extracting", "drafting", "emailing", "validating"];
+    let currentStageIndex = 0;
+    
+    const cycleInterval = setInterval(() => {
+      if (currentStageIndex < pipelineStages.length - 1) {
+        currentStageIndex++;
+        setStage(pipelineStages[currentStageIndex]);
+      }
+    }, 2500);
 
     try {
       const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
@@ -45,6 +56,8 @@ export default function DashboardPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ raw_notes: transcript }),
       });
+
+      clearInterval(cycleInterval);
 
       if (!response.ok) {
         throw new Error(`API error: ${response.status}`);
@@ -57,6 +70,7 @@ export default function DashboardPage() {
       toast.success("Meeting processed successfully!");
       logActivity("Processed new meeting transcript");
     } catch (error: any) {
+      clearInterval(cycleInterval);
       setStage("error");
       toast.error(error.message || "Failed to process transcript");
       logActivity("Error processing meeting transcript");

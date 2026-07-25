@@ -7,7 +7,8 @@ def extract_actions(normalized_text: str) -> ActionsResponse:
     prompt = f"""
     You are an AI assistant specialized in identifying action items from meeting notes.
     Extract all action items or tasks mentioned in the notes.
-    Identify the task description, the assigned person (if any), and the deadline (if any).
+    Identify the task description, assignee, priority, due date, status, dependencies, and any additional notes.
+    Strict Rule: Never hallucinate or invent deadlines, people, or priorities. If information does not exist for a field, display 'Not Specified'.
 
     Meeting Notes:
     {normalized_text}

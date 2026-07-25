@@ -6,7 +6,8 @@ def summarize_notes(normalized_text: str) -> SummaryResponse:
     client = get_gemini_client()
     prompt = f"""
     You are an AI assistant specialized in summarizing meeting notes.
-    Provide a short executive summary (2-3 sentences) and a detailed summary of the meeting grouped by topics.
+    Provide an executive summary, meeting objective, participants, key discussion points, decisions made, risks, open issues, and next steps.
+    Strict Rule: Never hallucinate. If information does not exist for a field, strictly output 'Not Specified' (or a list containing only 'Not Specified').
     
     Meeting Notes:
     {normalized_text}

@@ -4,7 +4,7 @@ import { useState, useRef } from "react";
 import { motion } from "framer-motion";
 import { toast } from "sonner";
 import ReactMarkdown from "react-markdown";
-import { FileText, CheckCircle2, Mail, ShieldCheck, Download, Copy, Maximize, Check } from "lucide-react";
+import { FileText, CheckCircle2, Mail, ShieldCheck, Download, Copy, Check } from "lucide-react";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -27,13 +27,13 @@ export function ResultsPanel({ results, title }: ResultsPanelProps) {
   const getActiveContent = () => {
     switch (activeTab) {
       case "summary":
-        return `# Executive Summary\n${results.summary.executive_summary}\n\n# Detailed Summary\n${results.summary.detailed_summary}`;
+        return `# Executive Summary\n${results.summary.executive_summary}\n\n# Objective\n${results.summary.meeting_objective}`;
       case "actions":
-        return results.actions.action_items.map(a => `- [ ] ${a.task} (@${a.assignee || "Unassigned"} - ${a.deadline || "No deadline"})`).join('\n');
+        return results.actions.action_items.map(a => `- [ ] ${a.task} (@${a.assignee} - ${a.due_date}) [Priority: ${a.priority}]`).join('\n');
       case "email":
         return `Subject: ${results.email.subject}\n\n${results.email.body}`;
       case "validation":
-        return `Validation Score: ${results.validation.score}%\nMissing Info: ${results.validation.missing_information.join(", ")}`;
+        return `Confidence Score: ${results.validation.confidence_score}%\nOverall: ${results.validation.overall_status}`;
       default:
         return "";
     }
@@ -70,7 +70,6 @@ export function ResultsPanel({ results, title }: ResultsPanelProps) {
     try {
       const html2canvasModule = await import("html2canvas");
       const html2canvas = html2canvasModule.default || html2canvasModule;
-      
       const jsPDFModule = await import("jspdf");
       const jsPDF = jsPDFModule.default || jsPDFModule.jsPDF;
       
@@ -89,15 +88,32 @@ export function ResultsPanel({ results, title }: ResultsPanelProps) {
     }
   };
 
+  const getPriorityBadge = (priority: string) => {
+    switch (priority.toLowerCase()) {
+      case 'high': return <Badge variant="destructive">{priority}</Badge>;
+      case 'medium': return <Badge className="bg-orange-500 hover:bg-orange-600 text-white">{priority}</Badge>;
+      case 'low': return <Badge variant="secondary" className="bg-blue-500/10 text-blue-600">{priority}</Badge>;
+      default: return <Badge variant="outline" className="text-muted-foreground">{priority}</Badge>;
+    }
+  };
+
+  const getStatusBadge = (status: string) => {
+    switch (status.toLowerCase()) {
+      case 'completed': return <Badge className="bg-green-500 hover:bg-green-600 text-white">{status}</Badge>;
+      case 'pending': return <Badge variant="secondary" className="bg-yellow-500/10 text-yellow-600">{status}</Badge>;
+      default: return <Badge variant="outline">{status}</Badge>;
+    }
+  };
+
   return (
     <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="h-full">
       <Card className="h-full flex flex-col shadow-md border-border/50">
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col">
-          <CardHeader className="pb-0 border-b px-0 pt-4">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 flex flex-col overflow-hidden">
+          <CardHeader className="pb-0 border-b px-0 pt-4 flex-shrink-0">
             <div className="px-6 flex justify-between items-center mb-4 flex-wrap gap-4">
               <div>
                 <CardTitle className="text-2xl truncate max-w-sm" title={title}>{title}</CardTitle>
-                <CardDescription>Processed successfully by MeetGenius</CardDescription>
+                <CardDescription>Processed successfully by MeetGenius AI</CardDescription>
               </div>
               <div className="flex gap-2">
                 <DropdownMenu>
@@ -121,9 +137,10 @@ export function ResultsPanel({ results, title }: ResultsPanelProps) {
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
-                <Badge variant="secondary" className="bg-green-500/10 text-green-600 border-green-500/20">
+                <Badge variant={results.validation.overall_status === 'PASS' ? 'secondary' : (results.validation.overall_status === 'WARNING' ? 'default' : 'destructive')} 
+                       className={results.validation.overall_status === 'PASS' ? "bg-green-500/10 text-green-600 border-green-500/20" : ""}>
                   <ShieldCheck className="h-3 w-3 mr-1" />
-                  Validated ({results.validation.score}%)
+                  {results.validation.overall_status} ({results.validation.confidence_score}%)
                 </Badge>
               </div>
             </div>
@@ -139,7 +156,7 @@ export function ResultsPanel({ results, title }: ResultsPanelProps) {
                   <Mail className="h-4 w-4 mr-2" /> Email Draft
                 </TabsTrigger>
                 <TabsTrigger value="validation" className="rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent data-[state=active]:shadow-none py-3 px-1 font-medium">
-                  <ShieldCheck className="h-4 w-4 mr-2" /> Validation
+                  <ShieldCheck className="h-4 w-4 mr-2" /> Validation Report
                 </TabsTrigger>
               </TabsList>
             </div>
@@ -147,43 +164,130 @@ export function ResultsPanel({ results, title }: ResultsPanelProps) {
           
           <CardContent className="flex-1 p-6 overflow-y-auto" ref={contentRef}>
             <TabsContent value="summary" className="mt-0 h-full">
-              <div className="prose prose-sm md:prose-base dark:prose-invert max-w-none">
-                <h3 className="font-semibold text-lg mb-2">Executive Summary</h3>
-                <p className="mb-6">{results.summary.executive_summary}</p>
-                <h3 className="font-semibold text-lg mb-2">Detailed Summary</h3>
-                <ReactMarkdown>{results.summary.detailed_summary}</ReactMarkdown>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <Card className="col-span-1 md:col-span-2 shadow-sm">
+                  <CardHeader className="py-3 bg-muted/30 border-b">
+                    <CardTitle className="text-base flex items-center"><FileText className="h-4 w-4 mr-2 text-primary" /> Executive Summary</CardTitle>
+                  </CardHeader>
+                  <CardContent className="pt-4">
+                    <p className="text-sm">{results.summary.executive_summary}</p>
+                  </CardContent>
+                </Card>
+                
+                <Card className="shadow-sm">
+                  <CardHeader className="py-3 bg-muted/30 border-b">
+                    <CardTitle className="text-base text-muted-foreground">Meeting Objective</CardTitle>
+                  </CardHeader>
+                  <CardContent className="pt-4">
+                    <p className="text-sm">{results.summary.meeting_objective}</p>
+                  </CardContent>
+                </Card>
+
+                <Card className="shadow-sm">
+                  <CardHeader className="py-3 bg-muted/30 border-b">
+                    <CardTitle className="text-base text-muted-foreground">Participants</CardTitle>
+                  </CardHeader>
+                  <CardContent className="pt-4">
+                    <ul className="list-disc pl-4 text-sm space-y-1">
+                      {results.summary.participants.map((p, i) => <li key={i}>{p}</li>)}
+                    </ul>
+                  </CardContent>
+                </Card>
+
+                <Card className="col-span-1 md:col-span-2 shadow-sm">
+                  <CardHeader className="py-3 bg-muted/30 border-b">
+                    <CardTitle className="text-base text-muted-foreground">Key Discussion Points</CardTitle>
+                  </CardHeader>
+                  <CardContent className="pt-4 prose prose-sm max-w-none dark:prose-invert">
+                    <ul className="space-y-1">
+                      {results.summary.key_discussion_points.map((pt, i) => <li key={i}><ReactMarkdown>{pt}</ReactMarkdown></li>)}
+                    </ul>
+                  </CardContent>
+                </Card>
+
+                <Card className="shadow-sm">
+                  <CardHeader className="py-3 bg-muted/30 border-b">
+                    <CardTitle className="text-base text-green-600">Decisions Made</CardTitle>
+                  </CardHeader>
+                  <CardContent className="pt-4">
+                    <ul className="list-disc pl-4 text-sm space-y-1">
+                      {results.summary.decisions_made.map((d, i) => <li key={i}>{d}</li>)}
+                    </ul>
+                  </CardContent>
+                </Card>
+
+                <Card className="shadow-sm">
+                  <CardHeader className="py-3 bg-muted/30 border-b">
+                    <CardTitle className="text-base text-blue-600">Next Steps</CardTitle>
+                  </CardHeader>
+                  <CardContent className="pt-4">
+                    <ul className="list-disc pl-4 text-sm space-y-1">
+                      {results.summary.next_steps.map((n, i) => <li key={i}>{n}</li>)}
+                    </ul>
+                  </CardContent>
+                </Card>
+
+                <Card className="shadow-sm">
+                  <CardHeader className="py-3 bg-muted/30 border-b">
+                    <CardTitle className="text-base text-red-500">Risks</CardTitle>
+                  </CardHeader>
+                  <CardContent className="pt-4">
+                    <ul className="list-disc pl-4 text-sm space-y-1">
+                      {results.summary.risks.map((r, i) => <li key={i}>{r}</li>)}
+                    </ul>
+                  </CardContent>
+                </Card>
+
+                <Card className="shadow-sm">
+                  <CardHeader className="py-3 bg-muted/30 border-b">
+                    <CardTitle className="text-base text-orange-500">Open Issues</CardTitle>
+                  </CardHeader>
+                  <CardContent className="pt-4">
+                    <ul className="list-disc pl-4 text-sm space-y-1">
+                      {results.summary.open_issues.map((o, i) => <li key={i}>{o}</li>)}
+                    </ul>
+                  </CardContent>
+                </Card>
               </div>
             </TabsContent>
             
             <TabsContent value="actions" className="mt-0 h-full">
-              <div className="rounded-md border">
+              <div className="rounded-md border overflow-hidden">
                 <Table>
                   <TableHeader className="bg-muted/50">
                     <TableRow>
-                      <TableHead className="w-[50%]">Task</TableHead>
+                      <TableHead className="w-[25%]">Task</TableHead>
                       <TableHead>Assignee</TableHead>
-                      <TableHead>Deadline</TableHead>
+                      <TableHead>Priority</TableHead>
+                      <TableHead>Due Date</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Dependencies</TableHead>
+                      <TableHead>Notes</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {results.actions.action_items.length === 0 ? (
-                      <TableRow><TableCell colSpan={3} className="text-center py-8 text-muted-foreground">No action items identified.</TableCell></TableRow>
+                      <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground">No action items identified.</TableCell></TableRow>
                     ) : (
                       results.actions.action_items.map((item, i) => (
-                        <TableRow key={i}>
-                          <TableCell className="font-medium">{item.task}</TableCell>
-                          <TableCell>
-                            {!item.assignee || item.assignee === "Not Specified" ? (
-                              <Badge variant="destructive" className="bg-red-500/10 text-red-500 shadow-none border-0">Needs Owner</Badge>
+                        <TableRow key={i} className="hover:bg-muted/30 transition-colors">
+                          <TableCell className="font-medium text-sm">{item.task}</TableCell>
+                          <TableCell className="text-sm">
+                            {item.assignee === "Not Specified" ? (
+                              <span className="text-muted-foreground italic">Not Specified</span>
                             ) : (
-                              <Badge variant="secondary">{item.assignee}</Badge>
+                              <Badge variant="secondary" className="bg-primary/5">{item.assignee}</Badge>
                             )}
                           </TableCell>
-                          <TableCell>
-                            {!item.deadline || item.deadline === "Not Specified" ? (
-                              <span className="text-muted-foreground italic text-sm">Not set</span>
-                            ) : (item.deadline)}
+                          <TableCell>{getPriorityBadge(item.priority)}</TableCell>
+                          <TableCell className="text-sm whitespace-nowrap">
+                            {item.due_date === "Not Specified" ? (
+                              <span className="text-muted-foreground italic">Not Specified</span>
+                            ) : (item.due_date)}
                           </TableCell>
+                          <TableCell>{getStatusBadge(item.status)}</TableCell>
+                          <TableCell className="text-sm text-muted-foreground max-w-[120px] truncate" title={item.dependencies}>{item.dependencies}</TableCell>
+                          <TableCell className="text-sm text-muted-foreground max-w-[120px] truncate" title={item.notes}>{item.notes}</TableCell>
                         </TableRow>
                       ))
                     )}
@@ -193,10 +297,14 @@ export function ResultsPanel({ results, title }: ResultsPanelProps) {
             </TabsContent>
             
             <TabsContent value="email" className="mt-0 h-full flex flex-col">
-              <div className="bg-muted/30 p-6 rounded-lg font-sans whitespace-pre-wrap flex-1 border">
-                <strong>Subject: </strong>{results.email.subject}
-                <br /><br />
-                {results.email.body}
+              <div className="bg-muted/30 p-8 rounded-lg font-sans whitespace-pre-wrap flex-1 border shadow-inner leading-relaxed">
+                <div className="pb-4 mb-4 border-b">
+                  <strong className="text-muted-foreground mr-2">Subject:</strong> 
+                  <span className="font-medium">{results.email.subject}</span>
+                </div>
+                <div className="prose prose-sm dark:prose-invert max-w-none">
+                  {results.email.body}
+                </div>
               </div>
             </TabsContent>
 

@@ -43,23 +43,23 @@ def health_check():
 def process_meeting_notes(request: ProcessRequest):
     # Stage 1: Normalize
     normalized = normalize_notes(request.raw_notes)
-    time.sleep(5)
+    time.sleep(2)
     
     # Stage 2: Extract
     extracted = extract_entities(normalized.normalized_text)
-    time.sleep(5)
+    time.sleep(2)
     
     # Stage 3: Summary
     summary = summarize_notes(normalized.normalized_text)
-    time.sleep(5)
+    time.sleep(2)
     
     # Stage 4: Actions
     actions = extract_actions(normalized.normalized_text)
-    time.sleep(5)
+    time.sleep(2)
     
     # Stage 5: Email
     email = draft_email(normalized, extracted, summary, actions)
-    time.sleep(5)
+    time.sleep(2)
     
     # Stage 6: Validate
     validation = validate_pipeline(request.raw_notes, normalized, extracted, summary, actions)

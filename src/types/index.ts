@@ -11,13 +11,23 @@ export interface ExtractResponse {
 
 export interface SummaryResponse {
   executive_summary: string;
-  detailed_summary: string;
+  meeting_objective: string;
+  participants: string[];
+  key_discussion_points: string[];
+  decisions_made: string[];
+  risks: string[];
+  open_issues: string[];
+  next_steps: string[];
 }
 
 export interface ActionItem {
   task: string;
-  assignee?: string;
-  deadline?: string;
+  assignee: string;
+  priority: string;
+  due_date: string;
+  status: string;
+  dependencies: string;
+  notes: string;
 }
 
 export interface ActionsResponse {
@@ -30,9 +40,13 @@ export interface EmailResponse {
 }
 
 export interface ValidateResponse {
-  score: number;
+  hallucination_check: string;
+  fact_verification: string;
+  action_item_verification: string;
+  decision_verification: string;
   missing_information: string[];
-  suggestions: string[];
+  confidence_score: number;
+  overall_status: string;
 }
 
 export interface APIResponse {

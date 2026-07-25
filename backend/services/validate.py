@@ -7,12 +7,13 @@ def validate_pipeline(raw_notes: str, normalized: NormalizeResponse, extracted: 
     prompt = f"""
     You are an AI assistant specialized in validating the quality of meeting notes and the extraction process.
     Review the original raw notes and the extracted metadata to evaluate the quality.
-    Provide a score out of 100 representing how comprehensive and clear the notes are.
-    Identify any critical information that seems to be missing.
-    Provide suggestions on how to improve the note-taking for future meetings.
-
+    Perform hallucination checks, fact verification, action item verification, and decision verification. Output PASS or FAIL for each.
+    Provide a confidence score out of 100, identify missing critical information, and provide an overall_status (PASS, WARNING, or FAIL).
+    Strict Rule: Never hallucinate.
+    
     Raw Notes: {raw_notes}
     Extracted Entities: {extracted.model_dump()}
+    Summary: {summary.model_dump()}
     Action Items: {[a.model_dump() for a in actions.action_items]}
     """
     
