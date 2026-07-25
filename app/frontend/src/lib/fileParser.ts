@@ -10,7 +10,8 @@ export async function parseFileToText(file: File): Promise<string> {
       const formData = new FormData();
       formData.append("file", file);
       
-      const response = await fetch("http://127.0.0.1:8000/api/parse-file", {
+      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+      const response = await fetch(`${API_URL}/api/parse-file`, {
         method: "POST",
         body: formData,
       });
