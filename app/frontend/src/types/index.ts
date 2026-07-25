@@ -44,4 +44,4 @@ export interface APIResponse {
   validation: ValidateResponse;
 }
 
-export type ProcessingStage = "idle" | "summarizing" | "extracting" | "drafting" | "validating" | "complete" | "error";
+export type ProcessingStage = "idle" | "summarizing" | "extracting" | "drafting" | "emailing" | "validating" | "complete" | "error";
