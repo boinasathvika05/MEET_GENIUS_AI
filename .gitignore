@@ -41,3 +41,7 @@ Thumbs.db
 .idea/
 *.swp
 *~
+pandoc*
+convert_to_docx.py
+*.tmp
+*.cache
