@@ -2,12 +2,13 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { Bot, Save } from "lucide-react";
+import { Bot } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 import { APIResponse, ProcessingStage } from "@/types";
 import { useMeetingStore } from "@/store/useMeetingStore";
 
+import { Header } from "@/components/layout/Header";
 import { StatsPanel } from "@/components/dashboard/StatsPanel";
 import { ImportPanel } from "@/components/dashboard/ImportPanel";
 import { WorkflowTrace } from "@/components/dashboard/WorkflowTrace";
@@ -18,17 +19,17 @@ export default function DashboardPage() {
   const [results, setResults] = useState<APIResponse | null>(null);
   const [startTime, setStartTime] = useState<number | null>(null);
   const [currentTitle, setCurrentTitle] = useState("");
+  const [isInputCollapsed, setIsInputCollapsed] = useState(false);
 
   const { saveMeeting, logActivity } = useMeetingStore();
 
   const generateAutoTitle = (transcript: string, apiResponse: APIResponse) => {
-    // Basic heuristic: check topics or default to date
     const topics = apiResponse.extracted.key_topics;
-    if (topics && topics.length > 0) {
-      return `${topics[0]} Discussion`;
+    if (topics && topics.length > 0 && topics[0] !== "Not Specified") {
+      return `${topics[0]} Sync`;
     }
     const dateStr = new Date().toLocaleDateString();
-    return `Meeting - ${dateStr}`;
+    return `Executive Meeting - ${dateStr}`;
   };
 
   const handleProcess = async (transcript: string) => {
@@ -67,6 +68,10 @@ export default function DashboardPage() {
       setResults(responseData);
       setStage("complete");
       setCurrentTitle(generateAutoTitle(transcript, responseData));
+      
+      // Auto-collapse input panel to maximize results viewport space!
+      setIsInputCollapsed(true);
+
       toast.success("Meeting processed successfully!");
       logActivity("Processed new meeting transcript");
     } catch (error: any) {
@@ -81,15 +86,12 @@ export default function DashboardPage() {
     if (!results || !startTime) return;
     const processingTimeMs = Date.now() - startTime;
     
-    // In a real app we might prompt the user to edit the title here.
-    // For now we use the auto-generated title.
-    
     saveMeeting({
       title: currentTitle,
       date: new Date().toLocaleDateString(),
       time: new Date().toLocaleTimeString(),
       processingTimeMs,
-      rawTranscript: "", // To save space, or we can store it. Let's store empty to avoid massive localStorage. User didn't mandate storing raw transcript in history, wait, they did: "Save: Meeting Title, Transcript, Meeting Summary...". OK, we will use the draft.
+      rawTranscript: "",
       results: results
     });
     
@@ -97,52 +99,61 @@ export default function DashboardPage() {
   };
 
   return (
-    <div className="p-4 lg:p-8 max-w-7xl mx-auto h-full flex flex-col">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-        {stage === "complete" && (
-          <Button onClick={handleSave} className="gap-2">
-            <Save className="h-4 w-4" /> Save Meeting
-          </Button>
-        )}
-      </div>
+    <div className="min-h-screen flex flex-col w-full bg-background text-foreground">
+      {/* Sticky Enterprise Top Header */}
+      <Header
+        onSave={handleSave}
+        isComplete={stage === "complete"}
+        validationStatus={results?.validation?.overall_status}
+        confidenceScore={results?.validation?.confidence_score}
+      />
 
-      <StatsPanel />
+      {/* Main Ultra-Wide Content Area */}
+      <div className="flex-1 p-4 lg:p-6 max-w-[1750px] w-full mx-auto space-y-6">
+        {/* Single Compact KPI Bar */}
+        <StatsPanel />
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 flex-1 min-h-0">
-        
-        {/* Left Panel: Import */}
-        <div className="lg:col-span-5 h-full min-h-[500px]">
-          <ImportPanel stage={stage} onSubmit={handleProcess} />
+        {/* Dynamic Full-Width Layout */}
+        <div className="flex flex-col gap-6 w-full">
+          {/* Transcript Source Input (Collapsible Bar or Full Input) */}
+          <ImportPanel 
+            stage={stage} 
+            onSubmit={handleProcess} 
+            isCollapsed={isInputCollapsed} 
+            onToggleCollapse={() => setIsInputCollapsed(!isInputCollapsed)} 
+          />
+
+          {/* Results Workspace / Processing Trace */}
+          <div className="w-full min-h-[600px] flex-1">
+            {stage === "idle" && !results && (
+              <div className="h-full flex flex-col items-center justify-center text-center p-16 border-2 border-dashed border-border/50 rounded-2xl bg-card/40 text-muted-foreground min-h-[450px]">
+                <div className="p-4 bg-primary/10 rounded-2xl text-primary mb-4">
+                  <Bot className="h-10 w-10 animate-pulse" />
+                </div>
+                <h3 className="text-xl font-bold mb-1 text-foreground">Awaiting Meeting Transcript</h3>
+                <p className="max-w-md text-xs text-muted-foreground leading-relaxed">
+                  Paste your raw transcript or upload a file above and click <span className="font-semibold text-primary">Generate Insights</span> to execute the autonomous 6-stage AI pipeline.
+                </p>
+              </div>
+            )}
+
+            {(stage !== "idle" && stage !== "complete" && stage !== "error") && (
+              <WorkflowTrace stage={stage} startTime={startTime} />
+            )}
+
+            {stage === "error" && (
+              <div className="h-full flex flex-col items-center justify-center text-center p-12 border border-destructive/30 bg-destructive/5 rounded-2xl text-destructive min-h-[400px]">
+                <h3 className="text-lg font-bold mb-1">Pipeline Execution Failed</h3>
+                <p className="text-xs text-muted-foreground max-w-sm mb-4">Verify that the Python FastAPI backend server is active on port 8000 and try again.</p>
+                <Button variant="outline" size="sm" onClick={() => setStage("idle")}>Reset Workspace</Button>
+              </div>
+            )}
+
+            {stage === "complete" && results && (
+              <ResultsPanel results={results} title={currentTitle} />
+            )}
+          </div>
         </div>
-
-        {/* Right Panel: Dynamic Results / Trace */}
-        <div className="lg:col-span-7 h-full min-h-[500px]">
-          {stage === "idle" && !results && (
-            <div className="h-full flex flex-col items-center justify-center text-center p-12 border-2 border-dashed rounded-xl bg-background/50 text-muted-foreground">
-              <Bot className="h-16 w-16 mb-4 text-muted-foreground/50" />
-              <h3 className="text-xl font-medium mb-2 text-foreground">Awaiting Transcript</h3>
-              <p className="max-w-md">Paste your transcript or drop a file on the left and hit generate to see the magic happen.</p>
-            </div>
-          )}
-
-          {(stage !== "idle" && stage !== "complete" && stage !== "error") && (
-            <WorkflowTrace stage={stage} startTime={startTime} />
-          )}
-
-          {stage === "error" && (
-            <div className="h-full flex flex-col items-center justify-center text-center p-12 border-2 border-destructive/50 bg-destructive/5 rounded-xl text-destructive">
-              <h3 className="text-xl font-bold mb-2">Processing Failed</h3>
-              <p>Check the network or your API keys and try again.</p>
-              <Button variant="outline" className="mt-4" onClick={() => setStage("idle")}>Try Again</Button>
-            </div>
-          )}
-
-          {stage === "complete" && results && (
-            <ResultsPanel results={results} title={currentTitle} />
-          )}
-        </div>
-        
       </div>
     </div>
   );
