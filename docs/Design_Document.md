@@ -1,42 +1,99 @@
 # AI Meeting Notes Automation
-## Design Document
+## Enterprise Architecture Design Document
+
 **Author:** Sathvika Boina  
-**Date:** July 25, 2026
+**Date:** July 26, 2026  
+**Repository:** [boinasathvika05/MEET_GENIUS_AI](https://github.com/boinasathvika05/MEET_GENIUS_AI.git)
+
+---
 
 ### 1. Problem Statement
-Organizations consistently struggle with manual meeting documentation due to human error, subjective interpretation, and the sheer volume of meetings. Relying on manual notes leads to inconsistent documentation, misattributed action items, and delayed execution of critical follow-ups. Professionals waste significant hours deciphering raw transcripts and drafting summaries, detracting from strategic work and active participation. The resulting business impact is severe: misaligned teams, lost institutional knowledge, and slowed operational velocity. Automating this process using AI mitigates these inefficiencies by providing immediate, accurate, and structured insights, allowing teams to focus on high-value execution rather than administrative overhead.
+Organizations consistently struggle with manual meeting documentation due to human error, subjective interpretation, and the sheer volume of syncs across cross-functional teams. Relying on manual notes leads to inconsistent documentation, misattributed action items, lost context, and delayed execution of critical follow-ups. Professionals waste significant hours deciphering raw transcripts and drafting emails, detracting from high-value execution. The resulting business impact is severe: misaligned teams, lost institutional knowledge, and slowed operational velocity. Automating this process using AI mitigates these inefficiencies by providing immediate, accurate, and structured insights, allowing teams to focus on strategic execution rather than administrative overhead.
 
-### 2. Solution Design
-The proposed architecture relies on a sequential, multi-agent pipeline designed to extract structured data from unstructured text. Rather than employing a single monolithic prompt, the system leverages Prompt Chaining, where discrete LLM calls handle specialized tasks. Data flows between stages strictly via JSON contracts, ensuring deterministic and parseable outputs.
+---
 
-1. **Cleaning & Normalization:** Corrects transcription errors and standardizes speaker tags. *Output: Clean text.*
-2. **Information Extraction:** Identifies entities, themes, and key decisions. *Output: JSON array of topics.*
-3. **Meeting Summary Generation:** Synthesizes extracted data into a high-level executive summary. *Output: JSON summary object.*
-4. **Action Item Extraction:** Isolates specific tasks, assignees, and deadlines. *Output: JSON array of tasks.*
-5. **Follow-up Email Generation:** Drafts a ready-to-send email incorporating the summary and action items. *Output: JSON email object.*
-6. **Validation:** A distinct LLM agent cross-references the generated artifacts against the original transcript to flag hallucinations. *Output: Validation score and missing context.*
+### 2. Solution Design & System Architecture
 
-This modularity allows independent prompt optimization without regression risks. The stack leverages Next.js for a responsive interface and FastAPI to orchestrate the Gemini API asynchronously.
+The MeetGenius AI platform relies on a 6-stage sequential, multi-agent pipeline designed to extract structured, actionable intelligence from raw unstructured meeting notes. Rather than employing a single monolithic prompt (which suffers from context dilution and high hallucination rates), the system leverages **Prompt Chaining** with strict **Pydantic JSON contracts**.
 
-### 3. Assumptions & Limitations
+```mermaid
+graph TD
+    Client[Web/Mobile Client - Next.js 16] -->|HTTPS POST| API[FastAPI Gateway]
+    API --> Auth[OAuth2 / JWT Auth]
+    API -->|Raw Transcript| Pipeline[6-Stage AI Pipeline]
+    
+    subgraph Pipeline
+        S1[Stage 1: Normalize & Clean] --> S2[Stage 2: Metadata Extraction]
+        S2 --> S3[Stage 3: Executive Detailed Summary]
+        S2 --> S4[Stage 4: Action Items Matrix]
+        S3 --> S5[Stage 5: Formatted Executive Email]
+        S4 --> S5
+        S1 --> S6[Stage 6: Validation Agent]
+        S2 --> S6
+        S3 --> S6
+        S4 --> S6
+    end
+
+    Pipeline <-->|Prompt Chains & JSON| Gemini[Gemini 2.5 Flash API]
+    Pipeline -->|Fallback Safety Layer| Fallback[Programmatic Parser]
+    Pipeline --> DB[(PostgreSQL Database)]
+    Pipeline --> S3Store[Object Storage]
+```
+
+#### Pipeline Stages:
+1. **Cleaning & Normalization (`normalize.py`):** Corrects transcription errors, eliminates conversational filler, and standardizes speaker attribution without altering factual meaning. *Output: Clean Text.*
+2. **Information Extraction (`extract.py`):** Identifies factual meeting metadata including date, time, attendees, and key topics. *Output: Metadata JSON Object.*
+3. **Detailed Executive Summary (`summary.py`):** Synthesizes extracted data into a detailed 3-4 sentence Executive Summary, meeting objective, discussion points, decisions made, risks, open issues, and next steps. *Output: Summary JSON Object.*
+4. **Action Item Matrix (`actions.py`):** Isolates specific tasks, mapping them to responsible assignees, inferred priorities, deadlines, status, and dependencies. *Output: Action Items JSON Array.*
+5. **Formatted Executive Email (`email.py`):** Drafts an executive-ready follow-up communication featuring structured Markdown sections for Objectives, Summary, Decisions, Action Items, and Risks. *Output: Email JSON Object.*
+6. **Validation & Quality Audit (`validate.py`):** An independent AI evaluation agent cross-references the generated artifacts against the original raw transcript to detect hallucinations, missing context, and factual discrepancies. *Output: Validation JSON Object (Confidence Score & PASS/FAIL status).*
+
+---
+
+### 3. Enterprise UI/UX Information Architecture (Linear & Vercel Style)
+
+The frontend is built with **Next.js 16 (Turbopack)** and **Tailwind CSS**, designed for maximum content density, zero visual clutter, and seamless widescreen performance (supporting 1700px+ ultra-wide viewports):
+
+- **72px Collapsible Navigation Sidebar:** Defaults to a minimal icon-only bar with Tooltip support, expanding smoothly to 220px on hover or click to reclaim horizontal screen real estate.
+- **Sticky Top Header:** Displays breadcrumbs, page title, global search input, quick export toolbar (Markdown/JSON/PDF), validation status badge, activity notifications stream, and user profile menu.
+- **Auto-Maximizing Results Workspace:** Upon clicking process, the transcript input panel automatically collapses into a compact bar, granting 100% of the viewport width to the AI outputs.
+- **Enterprise Action Items Data Table:** Features real-time text search, multi-column sorting (Priority, Status, Assignee, Due Date), Priority badges (High/Medium/Low), Status badges (Pending/Completed), User Avatars with initials, and expanded Task description width so no sentence wraps awkwardly.
+- **Executive Email Client UI:** Styled like a modern email composition view (Linear/Raycast style) with Subject, Recipients, Body, and one-click copy/download tools.
+
+---
+
+### 4. Assumptions, Limitations & Rate-Limit Resiliency
+
 **Assumptions:**
-The system assumes the meeting transcript already exists and is provided in a text-based format. We assume users will review and explicitly approve AI-generated content before distribution. Furthermore, the AI operates under the strict constraint that it only extracts information explicitly present in the text, avoiding external assumptions.
+The system assumes the meeting transcript exists in text format (.txt, .md, .pdf, .docx). The AI operates under the strict negative constraint that it only extracts information explicitly present in the source text, returning `"Not Specified"` for missing entities instead of inventing facts.
 
-**Limitations:**
-Accuracy is heavily dependent on transcript quality; garbled text or incomplete sentences will degrade extraction performance. Ambiguous speaker attribution in the raw transcript may cause action items to be misassigned. Additionally, the AI lacks external institutional knowledge and cannot infer unstated agreements. The dedicated Validation Agent mitigates these risks by rigorously scoring outputs against the source text, explicitly flagging unsupported claims.
+**Rate-Limit Resiliency & Fallback Guarantee:**
+In free-tier or production environments, third-party LLM APIs can encounter rate limits (`429 RESOURCE_EXHAUSTED`). To guarantee 100% platform availability:
+- All Gemini API calls enforce a `10000ms` minimum timeout configuration.
+- Every service layer implements a programmatic fallback engine. If a `ClientError` (429) or network exception occurs, the system catches the exception and deterministically parses structured output from the source text.
+- This guarantees that the API always returns a `200 OK` response and valid JSON payloads without throwing 500 errors to the user.
 
-### 4. Scalability Plan
-To evolve into an enterprise system, the architecture will transition to an asynchronous, event-driven model. An API Gateway will route traffic, while FastAPI offloads intensive LLM processing to background worker nodes (e.g., Celery) via a message queue (RabbitMQ). This prevents HTTP timeouts during long transcript processing and enables horizontal scaling of worker nodes based on queue depth. 
+---
 
-Security requires robust OAuth2 authentication and cloud storage for persistence. Telemetry and monitoring will track pipeline latency, token usage, and error rates. Finally, an evaluation pipeline with strict prompt versioning will scientifically measure the impact of prompt iterations against benchmark datasets before deployment.
+### 5. Scalability Plan
+To scale the platform to millions of daily meetings:
+- **Asynchronous Queue Architecture:** Offload FastAPI pipeline execution to Celery background workers backed by Redis or RabbitMQ queues.
+- **Database & Storage Layer:** PostgreSQL for relational meeting state and user permissions; Amazon S3 for storing raw transcripts and generated artifacts.
+- **LLM Model Router:** Route complex extraction and validation stages to Gemini 1.5 Pro or GPT-4o, while routing formatting tasks to Gemini 2.5 Flash for optimal latency and cost efficiency.
+- **Telemetry & Monitoring:** Implement OpenTelemetry and Datadog to track pipeline latency per stage, LLM token usage, and automated hallucination scores.
 
-### 5. Key Design Decisions
-**Prompt Chaining & JSON Handoffs:** Decomposing the problem into smaller, focused prompts reduces context pollution and cognitive load on the LLM, dramatically improving accuracy. JSON contracts ensure stateless, predictable data transfer between components.
-**Validation Layer:** Implementing a separate validation stage creates an automated safety net against hallucinations, essential for enterprise reliability.
-**Modular Pipeline:** Decoupling the pipeline into independent AI components allows engineers to swap models and ensures long-term maintainability.
+---
 
-### 6. Trade-offs
-This architecture favors accuracy and reliability over latency. Sequential prompt chaining is slower than a single monolithic prompt, as each stage waits for the previous one. However, the resulting improvement in data quality and the reduction of hallucinations justify the increased processing time. Additionally, maintaining multiple independent prompts increases implementation complexity and API cost (due to repeated context loading), but this trade-off is necessary to achieve enterprise-grade modularity, debuggability, and deterministic outputs.
+### 6. Key Design Decisions & Trade-offs
+
+| Design Decision | Rationale & Advantage | Trade-off / Mitigation |
+| :--- | :--- | :--- |
+| **Prompt Chaining** | Isolates cognitive tasks into focused sub-prompts, reducing hallucination vectors. | Slightly higher end-to-end latency (~10-12s total). Mitigated by visual stage progress polling. |
+| **Pydantic JSON Contracts** | Enforces rigid data schemas between LLM agents and the Next.js frontend. | Requires fallback parsing if LLM outputs invalid JSON. Handled by fallback services. |
+| **Programmatic 429 Fallback** | Guarantees 100% API availability even under API quota exhaustion. | Fallback outputs use rule-based parsing instead of generative synthesis when rate-limited. |
+| **72px Collapsible Sidebar** | Reclaims maximum horizontal viewport width for large data tables. | Requires hover/click interaction to reveal navigation labels. Tooltips used for clarity. |
+
+---
 
 ### 7. Conclusion
-The proposed architecture provides a reliable, maintainable, and accurate foundation for automating meeting documentation. By enforcing strict JSON contracts, leveraging sequential prompt chaining, and introducing a dedicated validation agent, the design inherently minimizes hallucinations and data loss. This modular, scalable approach is highly extensible, allowing organizations to seamlessly integrate future capabilities while immediately solving the inefficiencies of manual note-taking.
+The MeetGenius AI Meeting Notes Automation platform provides a maintainable, enterprise-ready, and resilient solution for post-meeting productivity. By combining prompt chaining, Pydantic type safety, rate-limit fallback guarantees, and a full-bleed widescreen design inspired by Linear and Vercel, the architecture eliminates manual administrative overhead while maintaining absolute data integrity.
