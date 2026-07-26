@@ -204,7 +204,7 @@ Review pending action items from last week, align on onboarding materials for in
 
 **Risks & Open Issues**
 - Onboarding document delay risks Maya starting without essential setup guidance.
-- Risk of client churn or dissatisfaction on the Thornton account if missed check-in calls remain unaddressed.
+- Risk of client churn or dissatisfaction on the Thornton account following two missed check-in calls.
 - Reporting template discrepancy between team default v2 and client expectations.
 - Unconfirmed start date for Maya (18th vs 19th).
 
