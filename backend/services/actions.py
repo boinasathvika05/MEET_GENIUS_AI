@@ -24,7 +24,7 @@ def extract_actions(normalized_text: str) -> ActionsResponse:
                 response_mime_type="application/json",
                 response_schema=ActionsResponse,
                 temperature=0.1,
-                http_options=types.HttpOptions(timeout=4000),
+                http_options=types.HttpOptions(timeout=10000),
             ),
         )
         return ActionsResponse.model_validate_json(response.text)

@@ -23,7 +23,7 @@ def normalize_notes(raw_notes: str) -> NormalizeResponse:
                 response_mime_type="application/json",
                 response_schema=NormalizeResponse,
                 temperature=0.2,
-                http_options=types.HttpOptions(timeout=4000),
+                http_options=types.HttpOptions(timeout=10000),
             ),
         )
         return NormalizeResponse.model_validate_json(response.text)

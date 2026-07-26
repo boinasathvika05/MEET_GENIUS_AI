@@ -23,32 +23,28 @@ def extract_entities(normalized_text: str) -> ExtractResponse:
                 response_mime_type="application/json",
                 response_schema=ExtractResponse,
                 temperature=0.1,
-                http_options=types.HttpOptions(timeout=4000),
+                http_options=types.HttpOptions(timeout=10000),
             ),
         )
         return ExtractResponse.model_validate_json(response.text)
     except Exception as e:
         logging.warning(f"Gemini API call failed in extract_entities: {e}. Utilizing fallback extraction.")
         
-        # Enhanced Rule-based fallback extraction
         attendees = []
         key_topics = []
         date_match = re.search(r'\b(?:\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]* \d{1,2},? \d{4})\b', normalized_text, re.IGNORECASE)
         time_match = re.search(r'\b\d{1,2}:\d{2}\s*(?:AM|PM|am|pm)?\b', normalized_text)
         
-        # Extract attendees
         attendee_match = re.search(r'(?:Attendees|Participants|Present):\s*([^.\n]+)', normalized_text, re.IGNORECASE)
         if attendee_match:
             raw_att = attendee_match.group(1).strip()
             attendees = [a.strip() for a in raw_att.split(',') if a.strip() and len(a.strip()) < 30]
             
         if not attendees:
-            # Common names search
             names = re.findall(r'\b[A-Z][a-z]{2,15}\b', normalized_text)
             keywords = {'Project', 'Sync', 'Meeting', 'Date', 'Attendees', 'Objective', 'Discussion', 'Priority', 'High', 'Medium', 'Low', 'Decisions'}
             attendees = list(dict.fromkeys([n for n in names if n not in keywords]))[:5]
 
-        # Extract topics
         for line in normalized_text.split('.'):
             if ':' in line:
                 topic = line.split(':')[0].strip()

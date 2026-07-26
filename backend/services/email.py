@@ -7,15 +7,26 @@ def draft_email(normalized: NormalizeResponse, extracted: ExtractResponse, summa
     try:
         client = get_gemini_client()
         prompt = f"""
-        You are an AI assistant specialized in drafting professional follow-up emails based on meeting notes.
-        Draft an email to the attendees with a subject line and the email body.
-        Incorporate the executive summary, key topics, and action items.
+        You are an Executive Communications Specialist. Draft a highly professional, enterprise-grade follow-up email based on the meeting insights below.
+        
+        The email body must be beautifully structured with clear headings:
+        - Professional Warm Greeting
+        - Meeting Overview & Strategic Objective
+        - Executive Summary & Key Discussions
+        - Core Decisions Made
+        - Action Items Table / List (including Assignee, Priority, Due Date)
+        - Key Risks & Open Issues
+        - Professional Closing & Next Steps
 
         Extracted Attendees: {extracted.attendees}
+        Meeting Objective: {summary.meeting_objective}
         Executive Summary: {summary.executive_summary}
+        Key Discussions: {summary.key_discussion_points}
+        Decisions: {summary.decisions_made}
         Action Items: {[a.model_dump() for a in actions.action_items]}
+        Risks: {summary.risks}
 
-        Draft the email content appropriately.
+        Provide a professional subject line and complete email body.
         """
         
         response = client.models.generate_content(
@@ -25,6 +36,7 @@ def draft_email(normalized: NormalizeResponse, extracted: ExtractResponse, summa
                 response_mime_type="application/json",
                 response_schema=EmailResponse,
                 temperature=0.4,
+                http_options=types.HttpOptions(timeout=10000),
             ),
         )
         return EmailResponse.model_validate_json(response.text)
@@ -32,24 +44,47 @@ def draft_email(normalized: NormalizeResponse, extracted: ExtractResponse, summa
         logging.warning(f"Gemini API call failed in draft_email: {e}. Utilizing fallback email drafting.")
         
         attendees_str = ", ".join(extracted.attendees) if extracted.attendees and extracted.attendees[0] != "Not Specified" else "Team"
-        action_str = "\n".join([f"- {a.task} (Assignee: {a.assignee})" for a in actions.action_items]) if actions.action_items else "- No immediate action items."
         
+        action_bullets = []
+        for a in actions.action_items:
+            assignee = a.assignee if a.assignee != "Not Specified" else "Unassigned"
+            due = f" (Due: {a.due_date})" if a.due_date != "Not Specified" else ""
+            priority = f" [{a.priority} Priority]" if a.priority != "Not Specified" else ""
+            action_bullets.append(f"  • {a.task} — Assigned to @{assignee}{due}{priority}")
+            
+        action_str = "\n".join(action_bullets) if action_bullets else "  • No immediate action items identified."
+
+        decisions_str = "\n".join([f"  • {d}" for d in summary.decisions_made]) if summary.decisions_made else "  • Target release schedule aligned."
+        risks_str = "\n".join([f"  • {r}" for r in summary.risks]) if summary.risks and summary.risks[0] != "Not Specified" else "  • No critical blockers identified."
+
         body = f"""Hi {attendees_str},
 
-Thank you for your time during our recent sync. Below is a summary of key points and next steps:
+Thank you for participating in our recent project sync. Below is the comprehensive post-meeting summary, key decisions, and assigned action items for your review.
 
-Executive Summary:
+📌 OBJECTIVE
+{summary.meeting_objective}
+
+💡 EXECUTIVE SUMMARY
 {summary.executive_summary}
 
-Action Items & Next Steps:
+✅ KEY DECISIONS MADE
+{decisions_str}
+
+🎯 ACTION ITEMS & DELIVERABLES
 {action_str}
 
-Please let me know if there are any edits or additions needed.
+⚠️ RISKS & OPEN ISSUES
+{risks_str}
+
+Next Steps:
+Please confirm receipt and verify your assigned deliverables. Feel free to reply directly to this thread if any adjustments or additions are required.
 
 Best regards,
-Meeting Automation System"""
+
+Sathvika Boina
+AI Solutions Lead | MeetGenius Platform"""
         
         return EmailResponse(
-            subject=f"Follow-up: Meeting Summary & Action Items",
+            subject=f"Post-Meeting Summary & Action Deliverables | {extracted.date if extracted.date else 'Sync'}",
             body=body
         )

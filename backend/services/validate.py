@@ -26,13 +26,13 @@ def validate_pipeline(raw_notes: str, normalized: NormalizeResponse, extracted: 
                 response_mime_type="application/json",
                 response_schema=ValidateResponse,
                 temperature=0.2,
+                http_options=types.HttpOptions(timeout=10000),
             ),
         )
         return ValidateResponse.model_validate_json(response.text)
     except Exception as e:
         logging.warning(f"Gemini API call failed in validate_pipeline: {e}. Utilizing fallback validation audit.")
         
-        # Rule-based validation check
         missing_info = []
         if not extracted.attendees or extracted.attendees[0] == "Not Specified":
             missing_info.append("Meeting attendees not explicitly specified.")
