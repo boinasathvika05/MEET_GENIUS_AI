@@ -51,13 +51,21 @@ export default function DashboardPage() {
     }, 2500);
 
     try {
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || "";
-      const endpoint = API_URL ? `${API_URL}/api/process` : "/api/process";
-      const response = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ raw_notes: transcript }),
-      });
+      let response: Response;
+      try {
+        const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+        response = await fetch(`${backendUrl}/api/process`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ raw_notes: transcript }),
+        });
+      } catch (err) {
+        response = await fetch("/api/process", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ raw_notes: transcript }),
+        });
+      }
 
       clearInterval(cycleInterval);
 

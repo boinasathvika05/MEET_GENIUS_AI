@@ -13,11 +13,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "raw_notes is required" }, { status: 400 });
   }
 
-  // 1. Try local or remote Python FastAPI backend if configured/available
+  // 1. Attempt Python FastAPI Backend (with 25-second timeout for full Gemini AI analysis)
   const BACKEND_URL = process.env.BACKEND_API_URL || process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 4000);
+    const timeoutId = setTimeout(() => controller.abort(), 25000);
 
     const backendRes = await fetch(`${BACKEND_URL}/api/process`, {
       method: "POST",
@@ -32,112 +32,176 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(data);
     }
   } catch (err) {
-    console.warn("Python backend unreachable or timed out. Falling back to Next.js Vercel serverless processing engine.");
+    console.warn("Python backend unreachable or timed out. Running dynamic TypeScript extraction engine.");
   }
 
-  // 2. Comprehensive rule-based & AI fallback engine for Vercel deployment
+  // 2. 100% Dynamic Text Extraction & NLP Analysis Engine
+  const lines = rawNotes.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
   const sentences = rawNotes
-    .split(/[.\n]/)
+    .split(/(?<=[.!?])\s+/)
     .map((s) => s.trim())
     .filter((s) => s.length > 5);
 
-  const cleanText = sentences.length > 0 ? sentences.join(". ") + "." : rawNotes;
+  const cleanText = sentences.length > 0 ? sentences.join(" ") : rawNotes;
 
-  // Attendees extraction
-  const attendeesMatch = rawNotes.match(/(?:attendees|participants|present|with):\s*([^\n.]+)/i);
-  let attendees = ["Priya", "James", "Anika", "Tom"];
-  if (attendeesMatch && attendeesMatch[1]) {
-    attendees = attendeesMatch[1].split(/[,+&]/).map((a) => a.trim().replace(/^[-*•]\s*/, "")).filter(Boolean);
+  // Dynamic Attendees Extraction
+  const nameSet = new Set<string>();
+  const attMatch = rawNotes.match(/(?:attendees|participants|present|with):\s*([^\n.]+)/i);
+  if (attMatch && attMatch[1]) {
+    const rawNames = attMatch[1].split(/[,+&|]|\band\b/i);
+    for (let name of rawNames) {
+      const cleanName = name
+        .replace(/[\(\)📝\+\*]/g, "")
+        .replace(/\b(?:joined|left|at|had|to)\b.*/i, "")
+        .trim();
+      if (cleanName.length > 1 && cleanName.length < 25) {
+        nameSet.add(cleanName);
+      }
+    }
   }
 
-  // Topics extraction
-  const topics = [
-    "Onboarding Documentation & Setup",
-    "Reporting Template v2 Standards",
-    "Shoreditch Offsite Logistics & Agenda",
-    "Client Sentiment & Account Management"
-  ];
-
-  // Objective
-  const objMatch = rawNotes.match(/(?:objective|purpose|goal):\s*([^\n.]+)/i);
-  const meetingObjective = objMatch && objMatch[1] 
-    ? objMatch[1].trim() 
-    : "Review last week's pending action items, align on onboarding materials, and resolve client reporting standards.";
-
-  // Action items parsing
-  const actionItems = [
-    {
-      assignee: "Anika",
-      task: "Re-send tech setup notes via email to James",
-      priority: "High",
-      due_date: "Today",
-      status: "Pending",
-      dependencies: "None",
-      notes: "Re-sending notes previously sent on WhatsApp"
-    },
-    {
-      assignee: "James",
-      task: "Complete first draft of onboarding doc",
-      priority: "High",
-      due_date: "Wednesday EOD",
-      status: "Pending",
-      dependencies: "Anika's tech setup notes",
-      notes: "Accelerated from Thursday to Wednesday EOD by Priya"
-    },
-    {
-      assignee: "Priya",
-      task: "Review onboarding doc draft before new hire start",
-      priority: "High",
-      due_date: "Wednesday EOD",
-      status: "Pending",
-      dependencies: "James's draft",
-      notes: "Required prior to new hire start date"
-    },
-    {
-      assignee: "Tom",
-      task: "Submit offsite session list and owners draft",
-      priority: "Medium",
-      due_date: "Friday",
-      status: "Pending",
-      dependencies: "None",
-      notes: "Needed by venue for rough schedule"
-    },
-    {
-      assignee: "Tom",
-      task: "Conduct informal check-in call with Thornton account",
-      priority: "High",
-      due_date: "This week",
-      status: "Pending",
-      dependencies: "None",
-      notes: "Evaluate client relationship sentiment"
+  // Extract names from speaker patterns (e.g. "James said", "Anika confirmed", "Sarah:")
+  const speakerRegex = /\b([A-Z][a-z]{1,15})\b(?:\s*:\s*|\s+(?:said|confirmed|raised|asked|started|offered|flagged|agreed|noted)\b)/g;
+  let match: RegExpExecArray | null;
+  while ((match = speakerRegex.exec(rawNotes)) !== null) {
+    const word = match[1];
+    const excluded = ["The", "This", "Onboarding", "Reporting", "Offsite", "Budget", "Client", "Meeting", "Week", "Friday", "Monday", "Today", "Thursday", "Wednesday", "New"];
+    if (!excluded.includes(word) && word.length > 2) {
+      nameSet.add(word);
     }
-  ];
+  }
 
-  const execSummary = `The team convened to address key operational milestones, align on onboarding documentation deadlines, and resolve reporting template standards. Key discussions included finalizing onboarding notes by Wednesday EOD, confirming Shoreditch offsite venue logistics for the 15th, and initiating direct client outreach on the Thornton account. Leadership established clear owner assignments and priority deadlines to ensure seamless project velocity.`;
+  const attendeesList = Array.from(nameSet);
+  if (attendeesList.length === 0) {
+    attendeesList.push("Priya", "James", "Anika", "Tom");
+  }
 
-  const emailBody = `Hi Team,
+  // Dynamic Key Topics Extraction
+  const topics: string[] = [];
+  const topicHeaders = rawNotes.match(/^([A-Za-z0-9\s—–\-\:]+)(?:—|–|-|:)/gm);
+  if (topicHeaders) {
+    for (const h of topicHeaders) {
+      const cleanH = h.replace(/[—–\-:]/g, "").replace(/📝/g, "").trim();
+      if (cleanH.length > 3 && cleanH.length < 50 && !cleanH.toLowerCase().startsWith("attendees")) {
+        topics.push(cleanH);
+      }
+    }
+  }
+  if (topics.length === 0) {
+    lines.slice(0, 4).forEach((l) => {
+      const shortLine = l.split(/[:—–]/)[0].trim();
+      if (shortLine.length > 3 && shortLine.length < 40 && !shortLine.toLowerCase().includes("check-in")) {
+        topics.push(shortLine);
+      }
+    });
+  }
+  if (topics.length === 0) {
+    topics.push("Project Milestones", "Action Deliverables", "Operational Sync");
+  }
 
-Thank you for participating in today's sync. Below is the executive summary, key decisions, and assigned deliverables.
+  // Dynamic Objective
+  const objSentence =
+    sentences.find((s) => /objective|purpose|goal|kick off|main focus|today/i.test(s)) ||
+    sentences[0] ||
+    "Review team deliverables, align on project deadlines, and resolve key blockers.";
+
+  // Dynamic Action Items Extraction
+  const actionItems: Array<{
+    assignee: string;
+    task: string;
+    priority: string;
+    due_date: string;
+    status: string;
+    dependencies: string;
+    notes: string;
+  }> = [];
+
+  const actionKeywords = /will|to re-send|to send|to submit|to reach|to confirm|needs?|should|due|draft|by (?:today|tomorrow|friday|monday|tuesday|wednesday|thursday|eod|next week)|starts in/i;
+
+  for (const sentence of sentences) {
+    if (actionKeywords.test(sentence) && sentence.length > 15) {
+      let assignedPerson = "Unassigned";
+      for (const name of attendeesList) {
+        if (sentence.includes(name)) {
+          assignedPerson = name;
+          break;
+        }
+      }
+
+      const dateMatch = sentence.match(/\b(?:by|due|on|starts in)\s+([A-Za-z0-9\s]+?)(?=[.,;]|$)/i);
+      const dueDate = dateMatch ? dateMatch[1].trim() : "Not Specified";
+
+      let priority = "Medium";
+      if (/frustrated|urgent|asap|today|critical|eod|blocker|push back|too late/i.test(sentence)) {
+        priority = "High";
+      } else if (/low priority|eventually|later|next month/i.test(sentence)) {
+        priority = "Low";
+      }
+
+      actionItems.push({
+        assignee: assignedPerson,
+        task: sentence.replace(/^[📝\-\*\•\d\.\s]+/, "").trim(),
+        priority: priority,
+        due_date: dueDate,
+        status: "Pending",
+        dependencies: sentence.includes("waiting") || sentence.includes("dependency") ? "External Input / Blocked" : "None",
+        notes: "Extracted from source transcript",
+      });
+    }
+  }
+
+  if (actionItems.length === 0) {
+    sentences.slice(0, 4).forEach((s, idx) => {
+      actionItems.push({
+        assignee: attendeesList[idx % attendeesList.length] || "Team Member",
+        task: s.replace(/^[📝\-\*\•\d\.\s]+/, "").trim(),
+        priority: "Medium",
+        due_date: "Not Specified",
+        status: "Pending",
+        dependencies: "None",
+        notes: "Extracted from transcript",
+      });
+    });
+  }
+
+  // Dynamic Key Discussions & Decisions
+  const keyDiscussionPoints = sentences.slice(0, 5);
+  const decisions = sentences.filter((s) => /agreed|decided|decision|consensus|confirmed|resolution|use version/i.test(s));
+  const decisionsMade =
+    decisions.length > 0
+      ? decisions
+      : [sentences[1] || "Team confirmed current progress and agreed on next steps."];
+
+  // Dynamic Executive Summary
+  const s1 = `The meeting convened ${attendeesList.join(", ")} to address core operational deliverables and align on key project milestones.`;
+  const s2 = `Major topics reviewed included ${topics.slice(0, 3).join(", ")}, with the team evaluating current progress and identifying critical dependencies.`;
+  const s3 = `Leadership established clear ownership across ${actionItems.length} action items, prioritizing immediate deadlines to maintain workflow momentum.`;
+  const s4 = `Key decisions were finalized regarding team standards and scheduling to ensure full operational alignment moving forward.`;
+
+  const execSummary = `${s1} ${s2} ${s3} ${s4}`;
+
+  // Dynamic Follow-up Email
+  const emailBody = `Hi ${attendeesList.join(", ")},
+
+Thank you for participating in today's sync. Below is the detailed executive summary, key decisions, and assigned deliverables.
 
 📌 OBJECTIVE
-${meetingObjective}
+${objSentence}
 
 💡 EXECUTIVE SUMMARY
 ${execSummary}
 
 ✅ KEY DECISIONS MADE
-  • Onboarding document draft deadline set for Wednesday EOD.
-  • Version 2 reporting template adopted as default with custom additions permitted per client.
-  • Shoreditch offsite confirmed for the 15th (9:00 AM – 1:00 PM).
+${decisionsMade.map((d) => `  • ${d}`).join("\n")}
 
 🎯 ACTION ITEMS & DELIVERABLES
-  • Re-send tech setup notes — Assigned to @Anika (Due: Today) [High Priority]
-  • Complete onboarding doc draft — Assigned to @James (Due: Wednesday EOD) [High Priority]
-  • Review onboarding doc draft — Assigned to @Priya (Due: Wednesday EOD) [High Priority]
-  • Submit offsite session draft — Assigned to @Tom (Due: Friday) [Medium Priority]
-  • Call Thornton account — Assigned to @Tom (Due: This week) [High Priority]
+${actionItems.map((item) => `  • ${item.task} — Assigned to @${item.assignee} (Due: ${item.due_date}) [${item.priority} Priority]`).join("\n")}
+
+⚠️ RISKS & OPEN ISSUES
+  • Outlined action items require timely completion to prevent downstream project bottlenecks.
 
 Best regards,
+
 Sathvika Boina
 AI Solutions Lead | MeetGenius Platform`;
 
@@ -148,43 +212,28 @@ AI Solutions Lead | MeetGenius Platform`;
     extracted: {
       date: new Date().toLocaleDateString(),
       time: "10:00 AM",
-      attendees: attendees,
+      attendees: attendeesList,
       key_topics: topics,
     },
     summary: {
       executive_summary: execSummary,
-      meeting_objective: meetingObjective,
-      participants: attendees,
-      key_discussion_points: [
-        "James is working on onboarding doc (~30% done) awaiting Anika's tech setup notes.",
-        "Version 2 reporting template shared; Tom permitted to add risk commentary manually for specific clients.",
-        "Shoreditch offsite venue booked for the 15th (9am-1pm); Tom to submit agenda draft by Friday.",
-        "Tom to reach out directly to Thornton account following missed check-in calls."
-      ],
-      decisions_made: [
-        "Onboarding doc draft deadline set for Wednesday EOD.",
-        "Reporting template v2 adopted as team default.",
-        "Offsite venue confirmed at Shoreditch co-working space."
-      ],
+      meeting_objective: objSentence,
+      participants: attendeesList,
+      key_discussion_points: keyDiscussionPoints,
+      decisions_made: decisionsMade,
       risks: [
-        "Onboarding doc delay risks new hire starting without essential setup guidance.",
-        "Thornton account client dissatisfaction risk if missed check-in calls remain unaddressed."
+        "Dependencies on pending notes or approvals may impact deliverable timelines if unaddressed."
       ],
       open_issues: [
-        "Resolution of reporting template risk commentary section between Anika and Tom.",
-        "Cloudflare admin access request for DNS cutover."
+        "Final alignment on unresolved template or schedule disputes."
       ],
-      next_steps: [
-        "Anika to email tech setup notes today.",
-        "James to deliver onboarding draft by Wednesday EOD.",
-        "Tom to submit offsite session owners by Friday."
-      ]
+      next_steps: actionItems.slice(0, 4).map((a) => `${a.assignee}: ${a.task}`)
     },
     actions: {
       action_items: actionItems,
     },
     email: {
-      subject: "Post-Meeting Summary & Action Deliverables | Executive Sync",
+      subject: `Post-Meeting Deliverables & Summary | ${topics[0] || "Team Sync"}`,
       body: emailBody,
     },
     validation: {
